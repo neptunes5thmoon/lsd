@@ -9,7 +9,7 @@ from __future__ import print_function
 from gunpowder import *
 from gunpowder.tensorflow import *
 
-setup_dir = os.path.dirname(os.path.realpath(__file__))
+setup_dir = "/nrs/saalfeld/heinrichl/fly_organelles/lsd/networks/fib25/lsd"
 
 with open(os.path.join(setup_dir, 'config.json'), 'r') as f:
     net_config = json.load(f)
