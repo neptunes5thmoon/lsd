@@ -1,51 +1,53 @@
 import json
-import mala
-import tensorflow as tf
-from mala.networks.unet import crop_zyx
+import tensorflow.compat.v1 as tf
+from networks import unet, conv_pass, crop_zyx
+import os
+tf.disable_eager_execution()
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
 
-def create_auto(input_shape, output_shape, name):
+# def create_auto(input_shape, output_shape, name):
 
-    tf.reset_default_graph()
+#     tf.reset_default_graph()
 
-    with tf.variable_scope('lsd'):
+#     with tf.variable_scope('lsd'):
 
-        raw = tf.placeholder(tf.float32, shape=input_shape)
-        raw_batched = tf.reshape(raw, (1, 1) + input_shape)
+#         raw = tf.placeholder(tf.float32, shape=input_shape)
+#         raw_batched = tf.reshape(raw, (1, 1) + input_shape)
 
-        unet, _, _ = mala.networks.unet(
-                raw_batched,
-                12,
-                6,
-                [[2,2,2],[2,2,2],[3,3,3]])
+#         unet, _, _ = mala.networks.unet(
+#                 raw_batched,
+#                 12,
+#                 6,
+#                 [[2,2,2],[2,2,2],[3,3,3]])
 
-        embedding_batched, _ = mala.networks.conv_pass(
-            unet,
-            kernel_sizes=[1],
-            num_fmaps=10,
-            activation='sigmoid',
-            name='embedding')
+#         embedding_batched, _ = mala.networks.conv_pass(
+#             unet,
+#             kernel_sizes=[1],
+#             num_fmaps=10,
+#             activation='sigmoid',
+#             name='embedding')
 
-        embedding_batched = crop_zyx(embedding_batched, (1, 10) + output_shape)
-        embedding = tf.reshape(embedding_batched, (10,) + output_shape)
+#         embedding_batched = crop_zyx(embedding_batched, (1, 10) + output_shape)
+#         embedding = tf.reshape(embedding_batched, (10,) + output_shape)
 
-        print("input shape : %s"%(input_shape,))
-        print("output shape: %s"%(output_shape,))
+#         print("input shape : %s"%(input_shape,))
+#         print("output shape: %s"%(output_shape,))
 
-        tf.train.export_meta_graph(filename=name + '.meta')
+#         tf.train.export_meta_graph(filename=name + '.meta')
 
-        config = {
-            'raw': raw.name,
-            'embedding': embedding.name,
-            'input_shape': input_shape,
-            'output_shape': output_shape}
-        with open(name + '.json', 'w') as f:
-            json.dump(config, f)
+#         config = {
+#             'raw': raw.name,
+#             'embedding': embedding.name,
+#             'input_shape': input_shape,
+#             'output_shape': output_shape}
+#         with open(name + '.json', 'w') as f:
+#             json.dump(config, f)
 
 def create_affs(input_shape, intermediate_shape, expected_output_shape, name):
 
     tf.reset_default_graph()
 
-    with tf.variable_scope('acrlsd'):
+    with tf.variable_scope('setup05'):
 
         raw = tf.placeholder(tf.float32, shape=input_shape)
         raw_batched = tf.reshape(raw, (1, 1) + input_shape)
@@ -58,14 +60,14 @@ def create_affs(input_shape, intermediate_shape, expected_output_shape, name):
 
         concat_input = tf.concat([raw_batched, pretrained_lsd_batched], axis=1)
 
-        unet, _, _ = mala.networks.unet(
+        model, _, _ = unet(
                     concat_input,
                     12,
                     6,
                     [[2,2,2],[2,2,2],[3,3,3]])
 
-        affs_batched, _ = mala.networks.conv_pass(
-            unet,
+        affs_batched, _ = conv_pass(
+            model,
             kernel_sizes=[1],
             num_fmaps=3,
             activation='sigmoid',
@@ -129,16 +131,16 @@ def create_config(input_shape, output_shape, name):
 
 if __name__ == "__main__":
 
-    train_input_shape = (304, 304, 304)
-    train_intermediate_shape = (196, 196, 196)
-    train_output_shape = (92, 92, 92)
+    # train_input_shape = (304, 304, 304)
+    # train_intermediate_shape = (196, 196, 196)
+    # train_output_shape = (92, 92, 92)
 
-    create_auto(train_input_shape, train_intermediate_shape, 'train_auto_net')
-    create_affs(train_input_shape, train_intermediate_shape, train_output_shape, 'train_net')
+    #create_auto(train_input_shape, train_intermediate_shape, 'train_auto_net')
+    #create_affs(train_input_shape, train_intermediate_shape, train_output_shape, 'train_net')
 
     test_input_shape = (364, 364, 364)
     test_output_shape = (260, 260, 260)
 
-    create_affs(test_input_shape, test_input_shape, test_output_shape, 'test_net')
+    create_affs(test_input_shape, test_input_shape, test_output_shape, '/nrs/saalfeld/heinrichl/fly_organelles/lsd/networks/hemi/acrlsd/config')
 
-    create_config(test_input_shape, test_output_shape, 'config')
+    #create_config(test_input_shape, test_output_shape, '/nrs/saalfeld/heinrichl/fly_organelles/lsd/networks/hemi/acrlsd/config')
