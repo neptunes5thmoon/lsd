@@ -2,6 +2,7 @@ import json
 import tensorflow.compat.v1 as tf
 from lsd.networks import unet, conv_pass, crop_zyx
 import os
+import click
 tf.disable_eager_execution()
 os.environ["TF_USE_LEGACY_KERAS"] = "1"
 
@@ -43,10 +44,10 @@ os.environ["TF_USE_LEGACY_KERAS"] = "1"
 #         with open(name + '.json', 'w') as f:
 #             json.dump(config, f)
 
-def create_affs(input_shape, intermediate_shape, expected_output_shape, name):
+def create_affs(input_shape, name):
 
     tf.reset_default_graph()
-
+    intermediate_shape=input_shape
     with tf.variable_scope('setup05'):
 
         raw = tf.placeholder(tf.float32, shape=input_shape)
@@ -75,7 +76,6 @@ def create_affs(input_shape, intermediate_shape, expected_output_shape, name):
         affs = tf.squeeze(affs_batched, axis=0)
 
         output_shape = tuple(affs.get_shape().as_list()[1:])
-        assert expected_output_shape == output_shape, "%s !=%s"%(expected_output_shape, output_shape)
 
         gt_affs = tf.placeholder(tf.float32, shape=(3,) + output_shape)
         loss_weights_affs = tf.placeholder(tf.float32, shape=(3,) + output_shape)
@@ -129,18 +129,22 @@ def create_config(input_shape, output_shape, name):
     with open(name + '.json', 'w') as f:
         json.dump(config, f)
 
+@click.command()
+@click.option(
+    "--output-config",
+    type=click.Path(),
+    required=True,
+    help="Directory to save the train_net and config files. Will save files under that name with .json and .meta extensions.",
+)
+
+@click.option(
+    "--steps",
+    type=int,
+    default=20,
+    help="number of steps by which to increase shape in xy dimension (step size: 27)",
+)
+def cli(output_config, steps):
+    input_size = steps * 2*3*3 + 124
+    create_affs((input_size, input_size, input_size), output_config)
 if __name__ == "__main__":
-
-    # train_input_shape = (304, 304, 304)
-    # train_intermediate_shape = (196, 196, 196)
-    # train_output_shape = (92, 92, 92)
-
-    #create_auto(train_input_shape, train_intermediate_shape, 'train_auto_net')
-    #create_affs(train_input_shape, train_intermediate_shape, train_output_shape, 'train_net')
-
-    test_input_shape = (364, 364, 364)
-    test_output_shape = (260, 260, 260)
-
-    create_affs(test_input_shape, test_input_shape, test_output_shape, '/nrs/saalfeld/heinrichl/fly_organelles/lsd/networks/hemi/acrlsd/config')
-
-    #create_config(test_input_shape, test_output_shape, '/nrs/saalfeld/heinrichl/fly_organelles/lsd/networks/hemi/acrlsd/config')
+    cli()
