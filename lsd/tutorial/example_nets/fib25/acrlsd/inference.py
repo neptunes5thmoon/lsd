@@ -107,7 +107,7 @@ def spawn_worker(
                     "-J",
                     "pred",
                     "-q",
-                    "gpu_rtx8000",
+                    "gpu_tesla",
                     "-n",
                     "2",
                     "-gpu",
