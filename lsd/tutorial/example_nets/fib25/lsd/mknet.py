@@ -1,7 +1,8 @@
 import json
 import tensorflow.compat.v1 as tf
-from networks import unet, conv_pass
-import os
+
+from lsd.networks import conv_pass, unet
+
 tf.disable_eager_execution()
 os.environ["TF_USE_LEGACY_KERAS"] = "1"
 def create_network(input_shape, name):

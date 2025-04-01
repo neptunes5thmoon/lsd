@@ -1,6 +1,6 @@
 import json
 import tensorflow.compat.v1 as tf
-from networks import unet, conv_pass, crop_zyx
+from lsd.networks import unet, conv_pass, crop_zyx
 import os
 tf.disable_eager_execution()
 os.environ["TF_USE_LEGACY_KERAS"] = "1"
