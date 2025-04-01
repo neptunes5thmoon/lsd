@@ -8,6 +8,7 @@ import daisy
 import numpy as np
 from funlib.persistence import Array, open_ds, prepare_ds
 from skimage.transform import rescale
+from functools import partial
 
 
 
@@ -96,7 +97,7 @@ def spawn_worker(
                     "-J",
                     "pred",
                     "-q",
-                    "gpu_rtx8000",
+                    "gpu_tesla",
                     "-n",
                     "2",
                     "-gpu",
@@ -124,6 +125,12 @@ def load_eval_model(setup_dir, checkpoint, device=None):
         all_names = list(n.name for n in tf.get_default_graph().as_graph_def().node)
         print([n for n in all_names if "Placeholder" in n])
     return session
+def check_complete(block, out_container, out_datasets):
+    for od in out_datasets:
+        out_ds = open_ds(os.path.join(out_container, od), "r")
+        if not out_ds.to_ndarray(block.write_roi).any():
+            return False
+    return True
 
 @cli.command()
 @click.option("-setup", "--setup_dir", type=click.Path(exists=True, file_okay=False))
@@ -165,6 +172,7 @@ def load_eval_model(setup_dir, checkpoint, device=None):
 )  # ignore
 @click.option("--instance", type=bool, default=False)  # this is for affinities
 @click.option("-tw", "--per-block-time-estimate", type=float, default=30, help="in seconds")
+@click.option("--overwrite", type=bool, is_flag=True)
 def predict(
     setup_dir,
     checkpoint,
@@ -186,7 +194,8 @@ def predict(
     mask_container,
     mask_dataset,
     instance,
-    per_block_time_estimate
+    per_block_time_estimate,
+    overwrite
 ):
     if not local:
         assert billing is not None
@@ -216,25 +225,24 @@ def predict(
     context = (read_shape - write_shape) / 2
     read_roi = daisy.Roi((0,) * read_shape.dims, read_shape)
     write_roi = read_roi.grow(-context, -context)
-    print(f"{context=}")
-    print(f"{read_shape=}")
-    print(f"{write_shape=}")
     total_write_roi = parsed_roi.snap_to_grid(raw.voxel_size)
     total_read_roi = total_write_roi.grow(context, context)
     n_blocks = np.prod((total_write_roi/write_shape).shape)
-    print(f"{total_write_roi=}")
-    print(f"{total_read_roi=}")
     time_per_worker = (per_block_time_estimate * n_blocks)/workers
     time_limit = int(np.ceil(time_per_worker/60.))
     out_container = os.path.join(setup_dir, out_container)
     
-    
+    all_outs = []
     if not instance:
         out_datasets = []
         for channel_iter in parsed_channels:
             out_datasets.append([])
             for indexes, channel in channel_iter:
                 num_channels = 1 if "-" not in indexes else len(range(int(indexes.split("-")[0]), int(indexes.split("-")[1])))
+                if overwrite:
+                    mode = "w"
+                else:
+                    mode = "a"
                 prepare_ds(
                     f"{out_container}/{out_dataset}/{channel}",
                     shape=(num_channels,) + tuple((total_write_roi/output_voxel_size).shape),
@@ -242,8 +250,9 @@ def predict(
                     chunk_shape=(1,) + tuple((write_roi/output_voxel_size).shape),
                     dtype=np.uint8,
                     axis_names = ["c^", "z", "y", "x"],
-                    mode="w"
-            )
+                    mode=mode
+                )
+                all_outs.append(f"{out_dataset}/{channel}")
     else:
         raise NotImplementedError()
         # num_channels = num_outputs
@@ -258,7 +267,7 @@ def predict(
         #         dtype=np.float32,
         #         num_channels=min(3, num_channels - i),
         #     )
-
+    check_partial = partial(check_complete, out_container=out_container, out_datasts=all_outs)
     task = daisy.Task(
         "test_server_task",
         total_roi=total_read_roi,
@@ -289,7 +298,7 @@ def predict(
         read_write_conflict=False,
         fit="overhang",
         num_workers=workers,
-        max_retries=0,
+        max_retries=1,
         timeout=None,
     )
 
@@ -430,9 +439,9 @@ def start_worker(
             output_data = session.run(
                 {ot: ot for ot in output_tensorname}, feed_dict={input_tensorname: raw_input}
             )
-            print(f"{output_tensorname=}, {parsed_channels=}, {out_datasets=}")
+
             for ot, channel_split, od in zip(output_tensorname, parsed_channels, out_datasets):
-                print("Hello")
+
                 predictions = Array(
                     output_data[ot],
                     block.write_roi.offset,
@@ -445,15 +454,12 @@ def start_worker(
                 write_data = (write_data ) * 255.0 #/ 2.0
                 
                 for (i, _), od_iter in zip(channel_split, od):
-                    print("okay")
                     indexes = []
                     if "-" in i:
                         j,k = i.split("-")
                         indexes = list(range(int(j), int(k)))
                     else:
                         indexes = [int(i)]
-                    print(f"{indexes=}")
-                    print(f"{od_iter=}")
                     if len(indexes) > 1:
                         #print(f"{out_dataset[write_roi]}")
                         od_iter[write_roi] = np.round(np.stack([write_data[j] for j in indexes], axis=0)).astype(np.uint8)
